@@ -16,6 +16,14 @@
 	exception_input: .asciiz "Invalid input: "
 	setup_except: .asciiz "Valid character for setup are 0, 1 and whitespace only \n"
 	try_again: .asciiz "Please try again: "
+	remaining: .asciiz "\nRemaining ship(s): \n"
+	s_21: .asciiz "		2 by 1 ship(s): "
+	s_31: .asciiz "		3 by 1 ship(s): "
+	s_41: .asciiz "		4 by 1 ship(s): "
+	choose_type_prompt: .asciiz "Choose your ship type (2 for 2x1, 3 for 3x1, 4 for 4x1): "
+	wrong_type_prompt: .asciiz "Please choose 2, 3 or 4 \n"
+	player_1_ships: .word 3, 2, 1 # 2x1, 3x1 4x1
+	player_2_ships: .word 3, 2, 1 # 2x1, 3x1 4x1
 .text
 	main:
 		# start of the game
@@ -35,21 +43,97 @@
 	p1_setup:
 		la $a0, p1
 		syscall 
+		while_remain_ship:
+			la $s7, player_1_ships
+			lw $t0, 0($s7)
+			la $a0, remaining
+			syscall
+			# print 2x1 ships
+			la $a0, s_21
+            syscall
 
-		la $a0, input_buffer
-		li $a1, 100  
-		li $v0, 8
-		syscall 
-		
-		li $a2, 1
-		la $a3, p1_setup
-		jal parse_input
-		 
+			addi $a0, $t0, 0
+			addi $s7, $s7, 4
+			li $v0, 1 
+			syscall
+
+			li $v0, 4
+			la $a0, endl
+			syscall
+			
+			# print 3x1 ships
+
+            la $a0, s_31
+            syscall
+
+			lw $t0, 0($s7)
+
+			addi $a0, $t0, 0
+			addi $s7, $s7, 4
+			li $v0, 1 
+			syscall
+
+			li $v0, 4
+			la $a0, endl
+			syscall
+
+            # print 4x1 ships
+			la $a0, s_41
+            syscall
+
+			lw $t0, 0($s7)
+
+			addi $a0, $t0, 0
+			addi $s7, $s7, 4
+			li $v0, 1 
+			syscall
+
+			li $v0, 4
+			la $a0, endl
+			syscall
+		choose_type:
+			la $a0, choose_type_prompt
+			syscall
+			li $v0, 5
+			li $a1, 1
+			syscall
+			jal is_type_valid
+
+			la $a0, input_buffer
+			li $a1, 100  
+			li $v0, 8
+			syscall 
+			
+			li $a2, 1
+			la $a3, p1_setup
+			jal parse_input
+			
 		la $a0, grid_player_1
 		jal print_grid
 		
+	is_type_valid:
+        addi $sp, $sp, -4
+		sw $s0, 0($sp)
+		addi $t0, $v0, -2
+		addi $t1, $a1, 0
+		la $a0, wrong_type_prompt
+		la $a1, choose_type
+		blt $t0, $zero, throw_invalid_input
+		bgt $t0, 2, throw_invalid_input
 
-				
+		beq $t1, 2, load_2 
+		load_1:
+			la $s0, player_1_ships
+			j next
+		load_2:
+			la $s0, player_2_ships
+		next:
+			sll $t0, $t0, 2
+			add $s0, $s0, $t0
+			lw  $t0, 0($s0)
+		
+		jr $ra
+
 	exit:
 		la $a0, txt
 		li $v0, 4
@@ -58,13 +142,16 @@
 		syscall
 	
 	load_grid:
-		#input a2; load p1 grid to a2
+		#input a2 -> player id; load grid to a2
+		# output $v1: return remaining ship
 		beq $a2, 1, return_1
 		la $a2, grid_player_2
+		la $v1, player_2_ships
 		jr $ra
 		return_1:
 			la $a2, grid_player_1
-			jr $ra
+			la $v1, player_1_ships
+            jr $ra
 		
 		
 	parse_input:
