@@ -9,7 +9,7 @@
 	grid_player_1: .byte 0:49 
 	grid_player_2: .byte 0:49 # create 7 by 7 grid for each player
 	seven: .word 7
-	endl: .asciiz "\n"
+	endl: .asciiz "\n" 
 	txt: .asciiz "ENDING PROGRAM\n"
 	txt_1: .asciiz "Confirm placement ? \n"
 	input_buffer: .space 100 # buffer for input
@@ -22,8 +22,10 @@
 	s_41: .asciiz "		4 by 1 ship(s): "
 	choose_type_prompt: .asciiz "Choose your ship type (2 for 2x1, 3 for 3x1, 4 for 4x1): "
 	wrong_type_prompt: .asciiz "Please choose 2, 3 or 4 \n"
+	empty_prompt: .asciiz "The chosen ship is unavailable. "
 	player_1_ships: .word 3, 2, 1 # 2x1, 3x1 4x1
 	player_2_ships: .word 3, 2, 1 # 2x1, 3x1 4x1
+	choose_placement: .asciiz "Input placement by format x_0, y_0, x_1, y_1: "
 .text
 	main:
 		# start of the game
@@ -64,7 +66,7 @@
 			# print 3x1 ships
 
             la $a0, s_31
-            syscall
+		        syscall
 
 			lw $t0, 0($s7)
 
@@ -79,7 +81,7 @@
 
             # print 4x1 ships
 			la $a0, s_41
-            syscall
+            		syscall
 
 			lw $t0, 0($s7)
 
@@ -98,28 +100,37 @@
 			li $a1, 1
 			syscall
 			jal is_type_valid
-
-			la $a0, input_buffer
-			li $a1, 100  
-			li $v0, 8
-			syscall 
 			
-			li $a2, 1
-			la $a3, p1_setup
-			jal parse_input
+			li $v0, 4
+			la $a0, choose_placement
+			syscall
+			# la $a0, input_buffer
+			# li $a1, 100  
+			# li $v0, 8
+			# syscall 
+			
+			# li $a2, 1
+			# la $a3, p1_setup
+			# jal parse_input
 			
 		la $a0, grid_player_1
 		jal print_grid
-		
+
+	exit:
+		la $a0, txt
+		li $v0, 4
+		syscall
+		li $v0, 10
+		syscall
+			
 	is_type_valid:
-        addi $sp, $sp, -4
+        	addi $sp, $sp, -4
 		sw $s0, 0($sp)
 		addi $t0, $v0, -2
 		addi $t1, $a1, 0
-		la $a0, wrong_type_prompt
-		la $a1, choose_type
-		blt $t0, $zero, throw_invalid_input
-		bgt $t0, 2, throw_invalid_input
+		
+		blt $t0, $zero, throw_invalid_type
+		bgt $t0, 2, throw_invalid_type
 
 		beq $t1, 2, load_2 
 		load_1:
@@ -131,16 +142,20 @@
 			sll $t0, $t0, 2
 			add $s0, $s0, $t0
 			lw  $t0, 0($s0)
+			la $a0, empty_prompt
+			la $a1, choose_type
+			lw $s0, 0($sp)
+			addi $sp, $sp, 4
+			blt $t0, 1, throw_invalid_input 
 		
-		jr $ra
-
-	exit:
-		la $a0, txt
-		li $v0, 4
-		syscall
-		li $v0, 10
-		syscall
-	
+		return_valid:
+			jr $ra
+		throw_invalid_type:
+			lw $s0, 0($sp)
+			addi $sp, $sp, 4
+			la $a0, wrong_type_prompt
+			la $a1, choose_type
+			j throw_invalid_input
 	load_grid:
 		#input a2 -> player id; load grid to a2
 		# output $v1: return remaining ship
@@ -259,6 +274,7 @@
 		syscall
 		la $a0, try_again
 		jr $a1
+		
 	update_turn_counter:
 		addi $sp, $sp, -4
 		sw $s0, 0($sp)
