@@ -8,6 +8,8 @@
 	p1: .asciiz "	*Current player* -> Player one's turn: \n"
 	p2: .asciiz "	*Current player* -> Player two's turn: \n"
 	input: .asciiz "--------------------------------------------------Please setup your battleship strategy-------------------------------------------------- \n"
+	shoot: .asciiz "----------------------------------------------------------------Battle Phase------------------------------------------------------------- \n"
+	bomb_input:.asciiz "	Enter bombing coordinates: "
 	current_grid: .asciiz "						     <Your current grid> \n"
 	seven: .word 7
 	endl: .asciiz "\n" 
@@ -33,6 +35,7 @@
 	clear_screen: .asciiz "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
 	indent_spacing: .asciiz "							" # 8tab
 	overlap_prompt: .asciiz "	Input ship overlaps with an already placed ship.\n"
+	hit_announce: .asciiz "	HIT!!\n"
 .text
 	main:
 		# start of the game
@@ -48,7 +51,7 @@
 		syscall
 		la $a0, endl
 		syscall
-		
+		j main_game_phase# DEBUGGING ONLY 
 		## Input
 		la $a0, input
 		syscall
@@ -171,8 +174,7 @@
 		syscall
 		la $a0, grid_player_2
 		jal print_grid
-		la $a0, p2
-		syscall 
+ 
 
 		while_remain_ship_2:
 			beqz $t7,end_p2_setup
@@ -255,6 +257,22 @@
 			j p2_setup
 	end_p2_setup:	
 		
+	main_game_phase:
+		# Display: turn -> current turn grid -> input bombing location
+		la $a0, clear_screen
+		li $v0, 4
+		syscall	
+		game:
+			p1_shoot:
+				la $a0, shoot
+				syscall
+				la $a0, p1
+				syscall 
+				la $a0, current_grid
+				li $v0,4
+				syscall
+				la $a0, grid_player_1
+				jal print_grid
 	exit:
 		la $a0, txt
 		li $v0, 4
