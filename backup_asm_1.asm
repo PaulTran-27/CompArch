@@ -3,10 +3,10 @@
 	grid_player_2: .byte 0:49 # create 7 by 7 grid for each player
 	dash: .asciiz "--------------------------------------------------"
 	greet: .asciiz "Hello player(s)"
-	turn_count_prompt: .asciiz "Turn number: "
-	turn_count: .word 0
-	p1: .asciiz "	*Current player* -> Player one's turn: \n"
-	p2: .asciiz "	*Current player* -> Player two's turn: \n"
+	turn_count_prompt: .asciiz "	Turn number: "
+	turn_count: .word 1
+	p1: .asciiz "\n	*Current player* -> Player one's turn: \n"
+	p2: .asciiz "\n	*Current player* -> Player two's turn: \n"
 	input: .asciiz "--------------------------------------------------Please setup your battleship strategy-------------------------------------------------- \n"
 	shoot: .asciiz "----------------------------------------------------------------Battle Phase------------------------------------------------------------- \n"
 	bomb_input:.asciiz "	Enter bombing coordinates: "
@@ -263,9 +263,20 @@
 		li $v0, 4
 		syscall	
 		game:
+			la $s0, turn_count
+			lw $s0, 0($s0)
+			beq $s0, 10, exit
 			p1_shoot:
+				li $v0, 4
 				la $a0, shoot
 				syscall
+				la $a0, turn_count_prompt
+				li $v0, 4
+				syscall
+				li $v0, 1
+                addi $a0, $s0, 0
+                syscall
+				li $v0, 4
 				la $a0, p1
 				syscall 
 				la $a0, current_grid
@@ -273,6 +284,39 @@
 				syscall
 				la $a0, grid_player_1
 				jal print_grid
+			
+			p2_shoot:
+				li $v0, 4
+				la $a0, shoot
+				syscall
+				la $a0, turn_count_prompt
+				li $v0, 4
+				syscall
+				li $v0, 1
+                addi $a0, $s0, 0
+                syscall
+				li $v0, 4
+				la $a0, p2
+				syscall 
+				la $a0, current_grid
+				li $v0,4
+				syscall
+				la $a0, grid_player_2
+				jal print_grid
+			jal update_turn_counter
+			# Delay
+			addi $sp, $sp, -4
+			sw $t0, 0($sp)
+			li $t0, 1000000 # delay by 1 mil loop
+			delay_while:
+				beqz $t0, exit_delay
+				addi $t0, $t0, -1
+                	j delay_while
+			exit_delay:
+				lw $t0, 0($sp)
+				addi $sp, $sp, 4
+				
+			j game
 	exit:
 		la $a0, txt
 		li $v0, 4
@@ -667,22 +711,22 @@
 		addi $sp, $sp, 4
 		jr $ra
 		
-		li $t7, 0 #tmp counter
-		while_tmp:
-			bgt $t7, 10, exit
-			la $t0, turn_count
-			lw $t0, ($t0)
-			la $a0, turn_count_prompt
-			li $v0, 4
-			syscall 
-			add $a0, $t0, $zero
-			li $v0, 1
-			syscall
+		# li $t7, 0 #tmp counter
+		# while_tmp:
+		# 	bgt $t7, 10, exit
+		# 	la $t0, turn_count
+		# 	lw $t0, ($t0)
+		# 	la $a0, turn_count_prompt
+		# 	li $v0, 4
+		# 	syscall 
+		# 	add $a0, $t0, $zero
+		# 	li $v0, 1
+		# 	syscall
 			
-			li $a0, 10
-			li $v0, 11
-			syscall
+		# 	li $a0, 10
+		# 	li $v0, 11
+		# 	syscall
 			
-			jal update_turn_counter
-			addi $t7, $t7, 1
-			j while_tmp
+		# 	jal update_turn_counter
+		# 	addi $t7, $t7, 1
+		# 	j while_tmp
