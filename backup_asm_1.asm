@@ -30,12 +30,45 @@
 	player_2_ships: .word 3, 2, 1 # 2x1, 3x1 4x1
 	choose_placement: .asciiz "	Input placement by format x_0, y_0, x_1, y_1: "
 	input_xy_xy: .word 0:4
+	bomb_coord: .word 0:2
 	ship_misalign: .asciiz "	Ship not in horizontal or vertical alignment.\n"
 	ship_size_mismatch: .asciiz "	Coordinates does not match the input ship size. \n"
 	clear_screen: .asciiz "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
 	indent_spacing: .asciiz "							" # 8tab
 	overlap_prompt: .asciiz "	Input ship overlaps with an already placed ship.\n"
-	hit_announce: .asciiz "	HIT!!\n"
+	hit_announce: .asciiz "			HIT!!\n"
+	you_missed: .asciiz "			You missed !!\n"
+# TESTING EXCEPTION HANDLING
+.ktext 0x80000180
+	la $k0, syscall_integer_1
+	beq $14, $k0, ship_input_integer_except_1
+	la $k0, syscall_integer_2
+	beq $14, $k0, ship_input_integer_except_2
+	move $k0,$v0   # Save $v0 value
+   	move $k1,$a0   # Save $a0 value
+   	#la   $a0, msg  # address of string to print
+   	#li   $v0, 4    # Print String service
+   	#syscall
+   	move $v0,$k0   # Restore $v0
+   	move $a0,$k1   # Restore $a0
+   	mfc0 $k0,$14   # Coprocessor 0 register $14 has address of trapping instruction
+   	addi $k0,$k0,4 # Add 4 to point to next instruction
+   	mtc0 $k0,$14   # Store new address back into $14
+   	eret           # Error return; set PC to value in $14
+   	ship_input_integer_except_1:
+   	la $k0,choose_type
+   	j return_e
+	ship_input_integer_except_2:
+   	la $k0,choose_type_2 # Add 4 to point to next instruction
+   	return_e:
+	la   $a0, msg  # address of string to print
+   	li   $v0, 4    # Print String service
+   	syscall
+   	mtc0 $k0,$14   # Store new address back into $14
+   	eret           # Error return; set PC to value in $14
+.kdata	
+msg:   
+   .asciiz "Please input only integers (No whitespaces or other characters) !! \n"
 .text
 	main:
 		# start of the game
@@ -51,7 +84,7 @@
 		syscall
 		la $a0, endl
 		syscall
-		j main_game_phase# DEBUGGING ONLY 
+		#j main_game_phase# DEBUGGING ONLY 
 		## Input
 		la $a0, input
 		syscall
@@ -127,6 +160,7 @@
 			li $v0, 5
 			li $a1, 1
 			la $a2, choose_type
+		syscall_integer_1:
 			syscall
 			jal is_type_valid
 			
@@ -231,6 +265,7 @@
 			li $v0, 5
 			li $a1, 2
 			la $a2, choose_type_2 # address for exception calls
+			syscall_integer_2:
 			syscall
 			jal is_type_valid
 			
@@ -259,10 +294,11 @@
 		
 	main_game_phase:
 		# Display: turn -> current turn grid -> input bombing location
-		la $a0, clear_screen
-		li $v0, 4
-		syscall	
+		
 		game:
+			la $a0, clear_screen
+			li $v0, 4
+			syscall	
 			la $s0, turn_count
 			lw $s0, 0($s0)
 			beq $s0, 10, exit
@@ -274,8 +310,8 @@
 				li $v0, 4
 				syscall
 				li $v0, 1
-                addi $a0, $s0, 0
-                syscall
+                		addi $a0, $s0, 0
+                		syscall
 				li $v0, 4
 				la $a0, p1
 				syscall 
@@ -284,7 +320,18 @@
 				syscall
 				la $a0, grid_player_1
 				jal print_grid
-			
+				la $a0, bomb_input
+				li $v0, 4
+				syscall
+				la $a0, input_buffer
+				li $a1, 100
+				li $v0, 8
+				syscall 
+				
+				la $a2, 2 # player 2 being hit
+				jal parse_bomb_input
+				jal print_result
+				
 			p2_shoot:
 				li $v0, 4
 				la $a0, shoot
@@ -293,8 +340,8 @@
 				li $v0, 4
 				syscall
 				li $v0, 1
-                addi $a0, $s0, 0
-                syscall
+                		addi $a0, $s0, 0
+               			syscall
 				li $v0, 4
 				la $a0, p2
 				syscall 
@@ -303,18 +350,20 @@
 				syscall
 				la $a0, grid_player_2
 				jal print_grid
+				la $a0, bomb_input
+				li $v0, 4
+				syscall
+				la $a0, input_buffer
+				li $a1, 100
+				li $v0, 8
+				syscall 
+				
+				la $a2, 1 # player 2 being hit
+				jal parse_bomb_input
+				jal print_result
 			jal update_turn_counter
 			# Delay
-			addi $sp, $sp, -4
-			sw $t0, 0($sp)
-			li $t0, 1000000 # delay by 1 mil loop
-			delay_while:
-				beqz $t0, exit_delay
-				addi $t0, $t0, -1
-                	j delay_while
-			exit_delay:
-				lw $t0, 0($sp)
-				addi $sp, $sp, 4
+			
 				
 			j game
 	exit:
@@ -323,7 +372,33 @@
 		syscall
 		li $v0, 10
 		syscall
-			
+	print_result:
+		addi $sp, $sp, -4
+		sw $a0, 0($sp)
+		addi $a0, $v0, 0
+		li $v0, 4
+		beqz $a0, no_hit
+		la $a0, hit_announce
+		syscall
+		j delay
+		no_hit:
+			la $a0, you_missed
+			syscall
+		delay:
+		addi $sp, $sp, -4
+		sw $t0, 0($sp)
+		li $t0, 10000 # delay by 1 mil loop
+		delay_while:
+			beqz $t0, exit_delay
+			addi $t0, $t0, -1
+                	j delay_while
+		exit_delay:
+			lw $t0, 0($sp)
+			addi $sp, $sp, 4
+		lw $a0, 0($sp)
+		addi $sp, $sp, 4
+		jr $ra
+		
 	is_type_valid:
         	addi $sp, $sp, -4
 		sw $s0, 0($sp)
@@ -369,7 +444,91 @@
 			la $v1, player_1_ships
             jr $ra
 		
+	parse_bomb_input:
+		# input: a0 -> input_buffer; a1 -> size; a2 -> player being hit
+		#	  a3 -> address to jump to in case of exception
+		# output: v0: bool -> hit or not
+		addi $sp, $sp, -12
 		
+		sw $s0, 0($sp)
+		sw $ra, 4($sp)
+		sw $t7, 8($sp)
+		addi $s6, $a1, 0
+		# while
+		la $s0, input_buffer
+		jal load_grid
+		la $s5, ($v1)
+		li $t7, 0
+		li $t6, 100#limiter for no infinite loop
+		parse_bomb_while:
+			beqz $t6, return_grid_bomb
+			addi $t6, $t6, -1
+			beq $t7, 2, update_grid
+
+			lb   $t0, 0($s0)
+			beq  $t0, 10, return_grid_bomb
+			addi $t0, $t0, -48
+			addi $s0, $s0, 1
+			
+			slt $t1, $t0, $zero
+			sne $t2, $t0, -16
+			and $t1, $t1, $t2
+			
+			sgt $t2, $t0,  6
+			# check if input is in range [0,6]
+			or  $t1, $t1, $t2
+			bnez $t1,    throw_invalid_setup
+			
+			# if not space run update coordinates
+			bne $t0, -16,  update_bomb_coordinates
+
+	        	j parse_bomb_while
+		update_bomb_coordinates:
+				addi $sp, $sp, -8
+				sw $s0, 0($sp)
+				sw $t7, 4($sp)
+				la $s0, bomb_coord
+                		sll $t7, $t7, 2
+				add $s0, $s0, $t7
+				sw $t0, 0($s0)
+				
+				# restore stack
+				lw $s0, 0($sp)
+				lw $t7, 4($sp)
+				addi $sp, $sp, 8
+
+				#increment number of inputed coordinate
+				addi $t7, $t7, 1
+                		j parse_bomb_while
+		update_grid:
+			addi $sp, $sp, -16
+			sw $t0, 0($sp)
+			sw $t1, 4($sp)
+			sw $t2, 8($sp)
+			sw $s0, 12($sp)
+			
+			la $s0, bomb_coord
+			lw $t0, 0($s0) # x
+			lw $t1, 4($s0) # y
+			
+			mul $t0, $t0, 7   # row * 7
+			add $t0, $t0, $t1 # add col to row
+			add $s0, $a2, $t0 # get grid[x][y]
+			
+			lb $t2, 0($s0)
+			sb $zero, 0($s0)
+			sne $v0, $zero, $t2 # set if t2 is not zero (is a ship)
+			lw $t0, 0($sp)
+			lw $t1, 4($sp)
+			lw $t2, 8($sp)
+			lw $s0, 12($sp)
+			addi $sp, $sp, 16
+		return_grid_bomb:
+			lw $s0, 0($sp)
+			lw $ra, 4($sp)
+			lw $t7, 8($sp)
+			addi $sp, $sp, 12
+			jr $ra	
 	parse_input:
 		# input: a0 -> input_buffer; a1 -> size; a2 -> player id
 		#	  a3 -> address to jump to in case of exception
@@ -410,14 +569,14 @@
 	        #li $v0, 11
 			#li $a0, 32
 			#syscall
-	        j parse_while
+		        j parse_while
 
 			update_coordinates:
 				addi $sp, $sp, -8
 				sw $s0, 0($sp)
 				sw $t7, 4($sp)
 				la $s0, input_xy_xy
-                sll $t7, $t7, 2
+                		sll $t7, $t7, 2
 				add $s0, $s0, $t7
 				sw $t0, 0($s0)
 				
@@ -428,7 +587,7 @@
 
 				#increment number of inputed coordinate
 				addi $t7, $t7, 1
-                j parse_while
+                		j parse_while
 
 			check_if_less_than_then_swap:
 				# input $t0 first registers
