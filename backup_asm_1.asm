@@ -1,6 +1,8 @@
 .data
 	grid_player_1: .byte 0:49 
 	grid_player_2: .byte 0:49 # create 7 by 7 grid for each player
+	ship_count_p1: .word 16   # 4x1 + 3x2 + 2x3
+	ship_count_p2: .word 16   
 	dash: .asciiz "--------------------------------------------------"
 	greet: .asciiz "Hello player(s)"
 	turn_count_prompt: .asciiz "	Turn number: "
@@ -16,7 +18,7 @@
 	txt: .asciiz "ENDING PROGRAM\n"
 	txt_1: .asciiz "Confirm placement ? \n"
 	input_buffer: .space 100 # buffer for input
-	exception_input: .asciiz "Invalid input: "
+	exception_input: .asciiz "		Invalid input: "
 	setup_except: .asciiz "Valid characters for setup are number in range 0 to 6 and whitespace only \n"
 	try_again: .asciiz "Please try again: "
 	remaining: .asciiz "\n	<-> Remaining ship(s): \n"
@@ -38,12 +40,18 @@
 	overlap_prompt: .asciiz "	Input ship overlaps with an already placed ship.\n"
 	hit_announce: .asciiz "			HIT!!\n"
 	you_missed: .asciiz "			You missed !!\n"
-# TESTING EXCEPTION HANDLING
+	incomplete_input: .asciiz "Incomplete input (Must be 4 numbers for ship setup or 2 numbers for bombing!!\n"
+	p1_win_bool: .word 0 # 0 if lose else win
+	player_win: .asciiz " 			WINNER: PLAYER  "
+	
+# TESTED!! EXCEPTION HANDLING
 .ktext 0x80000180
 	la $k0, syscall_integer_1
-	beq $14, $k0, ship_input_integer_except_1
+	move $k1, $a0
+	mfc0 $a0, $14
+	beq $a0, $k0, ship_input_integer_except_1
 	la $k0, syscall_integer_2
-	beq $14, $k0, ship_input_integer_except_2
+	beq $a0, $k0, ship_input_integer_except_2
 	move $k0,$v0   # Save $v0 value
    	move $k1,$a0   # Save $a0 value
    	#la   $a0, msg  # address of string to print
@@ -59,7 +67,7 @@
    	la $k0,choose_type
    	j return_e
 	ship_input_integer_except_2:
-   	la $k0,choose_type_2 # Add 4 to point to next instruction
+   	la $k0,choose_type_2 
    	return_e:
 	la   $a0, msg  # address of string to print
    	li   $v0, 4    # Print String service
@@ -68,7 +76,7 @@
    	eret           # Error return; set PC to value in $14
 .kdata	
 msg:   
-   .asciiz "Please input only integers (No whitespaces or other characters) !! \n"
+   .asciiz "	\n !! Please input only integers (No whitespaces or other characters) !! \n"
 .text
 	main:
 		# start of the game
@@ -299,9 +307,13 @@ msg:
 			la $a0, clear_screen
 			li $v0, 4
 			syscall	
-			la $s0, turn_count
+			# If p1 ship == 0 or p2 ship == 0 ends 
+			la $s0, ship_count_p1
 			lw $s0, 0($s0)
-			beq $s0, 10, exit
+			beqz $s0, check_winner
+			la $s0, ship_count_p2
+			lw $s0, 0($s0)
+			beqz $s0, check_winner
 			p1_shoot:
 				li $v0, 4
 				la $a0, shoot
@@ -310,6 +322,8 @@ msg:
 				li $v0, 4
 				syscall
 				li $v0, 1
+				la $s0, turn_count
+				lw $s0, 0($s0)
                 		addi $a0, $s0, 0
                 		syscall
 				li $v0, 4
@@ -320,6 +334,7 @@ msg:
 				syscall
 				la $a0, grid_player_1
 				jal print_grid
+				shoot_p1:
 				la $a0, bomb_input
 				li $v0, 4
 				syscall
@@ -329,9 +344,25 @@ msg:
 				syscall 
 				
 				la $a2, 2 # player 2 being hit
+				la $a3, shoot_p1 # incase invalid
 				jal parse_bomb_input
+				beqz $v0, missed_1 # if v0 -> reduce remaining ship
+				addi $sp, $sp, -4
+				sw   $t0, 0($sp)
+				lw   $t0, ship_count_p1
+				addi $t0, $t0, -1
+				sw   $t0, ship_count_p1
+				lw   $t0, 0($sp)
+				addi $sp, $sp, 4
+				missed_1:
 				jal print_result
-				
+			
+			la $s0, ship_count_p1
+			lw $s0, 0($s0)
+			beqz $s0, check_winner
+			la $s0, ship_count_p2
+			lw $s0, 0($s0)
+			beqz $s0, check_winner
 			p2_shoot:
 				li $v0, 4
 				la $a0, shoot
@@ -350,6 +381,7 @@ msg:
 				syscall
 				la $a0, grid_player_2
 				jal print_grid
+				shoot_p2:
 				la $a0, bomb_input
 				li $v0, 4
 				syscall
@@ -359,19 +391,53 @@ msg:
 				syscall 
 				
 				la $a2, 1 # player 2 being hit
+				la $a3, shoot_p2
 				jal parse_bomb_input
+				beqz $v0, missed_2 # if v0 -> reduce remaining ship
+				addi $sp, $sp, -4
+				sw   $t0, 0($sp)
+				lw   $t0, ship_count_p2
+				addi $t0, $t0, -1
+				sw   $t0, ship_count_p2
+				lw   $t0, 0($sp)
+				addi $sp, $sp, 4
+				missed_2:
 				jal print_result
 			jal update_turn_counter
 			# Delay
-			
-				
 			j game
-	exit:
-		la $a0, txt
-		li $v0, 4
-		syscall
+	check_winner:
+		lw  $s1, p1_win_bool
+		lw  $s0, ship_count_p2
+		seq $s1, $s0, $zero
+		sw  $s1, p1_win_bool
+		
+		jal announce_winner
+		
+	exit:	
+		# close file here if implemented
+		
 		li $v0, 10
 		syscall
+	
+	announce_winner:
+		lw  $s0, p1_win_bool
+		la $a0, player_win
+		li $v0, 4
+		syscall
+		
+		beqz $s0, p2_win
+		
+		li $a0, 1
+		j announce
+		
+		p2_win:
+		li $a0, 2
+		announce:
+		li $v0, 1
+		syscall
+		jr $ra
+			
 	print_result:
 		addi $sp, $sp, -4
 		sw $a0, 0($sp)
@@ -387,7 +453,7 @@ msg:
 		delay:
 		addi $sp, $sp, -4
 		sw $t0, 0($sp)
-		li $t0, 10000 # delay by 1 mil loop
+		li $t0, 10000 # delay by 10000 loop
 		delay_while:
 			beqz $t0, exit_delay
 			addi $t0, $t0, -1
@@ -524,11 +590,15 @@ msg:
 			lw $s0, 12($sp)
 			addi $sp, $sp, 16
 		return_grid_bomb:
+			blt $t7, 2, throw_incomplete_input
 			lw $s0, 0($sp)
 			lw $ra, 4($sp)
 			lw $t7, 8($sp)
 			addi $sp, $sp, 12
-			jr $ra	
+			jr $ra		
+		
+
+	
 	parse_input:
 		# input: a0 -> input_buffer; a1 -> size; a2 -> player id
 		#	  a3 -> address to jump to in case of exception
@@ -761,11 +831,23 @@ msg:
 				beq  $v0, 1, size_mismatch
 				beq  $v0, 2, throw_overlap_placement
 		return_grid:
+		
+			blt $t7, 4, throw_incomplete_input
 			lw $s0, 0($sp)
 			lw $ra, 4($sp)
 			lw $t7, 8($sp)
 			addi $sp, $sp, 12
 			jr $ra		
+		
+		throw_incomplete_input:
+		
+			lw $s0, 0($sp)
+			lw $ra, 4($sp)
+			lw $t7, 8($sp)
+			addi $sp, $sp, 12
+			la $a0, incomplete_input
+			la $a1, ($a3)
+			j throw_invalid_input		
 		throw_invalid_setup:
 			# li $v0, 1
 			# add $a0, $t0, $zero
@@ -783,6 +865,7 @@ msg:
 			lw $s0, 0($sp)
 			lw $ra, 4($sp)
 			lw $t7, 8($sp)
+			addi $sp, $sp, 12
 			la $a0, ship_misalign
 			la $a1, ($a3)
 			j throw_invalid_input
