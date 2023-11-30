@@ -4,7 +4,7 @@
 	b_prompt: .asciiz "		b: "
 	c_prompt: .asciiz "		c: "
 	d_prompt: .asciiz "		d: "
-	e_prompt: .asciiz "		e: 7 (Student ID 2252623)\n"
+	e_prompt: .asciiz "		e: 5 (Student ID 2252623)\n"
 	u_prompt: .asciiz "		u: "
 	v_prompt: .asciiz "		v: "
 	Int_res: .asciiz  "	Integral result: "
@@ -12,7 +12,7 @@
 	b: .double 0
 	c: .double 0
 	d: .double 0
-	e: .double 7.0
+	e: .double 5.0
 	u: .double 0
 	v: .double 0
 	Fu: .double 0
