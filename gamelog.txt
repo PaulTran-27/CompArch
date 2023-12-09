@@ -1,0 +1,17 @@
+_________________________GAME LOG_________________________
+	
+	Turn number:1
+		__Player one's move:1 1
+		__Player two's move:2 2
+	Turn number:2
+		__Player one's move:22
+
+		__Player two's move:33
+
+	Turn number:3
+		__Player one's move:44
+
+		__Player two's move:55
+
+	Turn number:4
+		__Player one's move:66

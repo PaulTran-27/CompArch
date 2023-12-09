@@ -1,11 +1,12 @@
 .data
-	grid_player_1: .byte 0:49 
-	grid_player_2: .byte 0:49 # create 7 by 7 grid for each player
-	ship_count_p1: .word 16   # 4x1 + 3x2 + 2x3
+	grid_player_1: .byte 1:49 
+	grid_player_2: .byte 1:49 # create 7 by 7 grid for each player
+	ship_count_p1: .word 4   # 4x1 + 3x2 + 2x3
 	ship_count_p2: .word 16   
 	dash: .asciiz "--------------------------------------------------"
 	greet: .asciiz "Hello player(s)"
 	turn_count_prompt: .asciiz "	Turn number: "
+	turn_count_log:    .ascii  "\n	Turn number: "
 	turn_count: .word 1
 	p1: .asciiz "\n	*Current player* -> Player one's turn: \n"
 	p2: .asciiz "\n	*Current player* -> Player two's turn: \n"
@@ -15,6 +16,7 @@
 	current_grid: .asciiz "						     <Your current grid> \n"
 	seven: .word 7
 	endl: .asciiz "\n" 
+	endl_no_z: .ascii "   \n" 
 	txt: .asciiz "ENDING PROGRAM\n"
 	txt_1: .asciiz "Confirm placement ? \n"
 	input_buffer: .space 100 # buffer for input
@@ -43,7 +45,13 @@
 	incomplete_input: .asciiz "Incomplete input (Must be 4 numbers for ship setup or 2 numbers for bombing!!\n"
 	p1_win_bool: .word 0 # 0 if lose else win
 	player_win: .asciiz " 			WINNER: PLAYER  "
-	
+	log_file_name: .asciiz "/mnt/Workspace/BK_assignment/CompArchitecture/gamelog.txt" # REMEMBER TO CHANGE THIS WHEN CHANGE DEVICE
+	log_file_desc: .word   0
+	log_start: .ascii "_________________________GAME LOG_________________________"
+	p1_log: .ascii    "\n		__Player one's move: "
+	p2_log: .ascii    "\n		__Player two's move: "
+	p_len:  .word 23
+	buff: .ascii ""
 # TESTED!! EXCEPTION HANDLING
 .ktext 0x80000180
 	la $k0, syscall_integer_1
@@ -80,6 +88,20 @@ msg:
 .text
 	main:
 		# start of the game
+		li $v0, 13
+		la   $a0, log_file_name     # output file name
+		li   $a1, 1        	    # Open for writing (flags are 0: read, 1: write)
+  		li   $a2, 0       	    # mode is ignored
+  		syscall            	    # open a file (file descriptor returned in $v0)
+  		sw   $v0, log_file_desc	    # store file descriptor
+  		
+  		li   $v0, 15       	    # system call for write to file
+  		lw   $a0, log_file_desc     # file descriptor 
+  		la   $a1, log_start  
+  		li   $a2, 60      	    # hardcoded buffer length
+  		syscall            	    # write to file
+  		
+  		
 		li $v0, 4
 		la $a0, clear_screen
 		syscall 
@@ -92,7 +114,7 @@ msg:
 		syscall
 		la $a0, endl
 		syscall
-		#j main_game_phase# DEBUGGING ONLY 
+		j main_game_phase# DEBUGGING ONLY 
 		## Input
 		la $a0, input
 		syscall
@@ -304,6 +326,8 @@ msg:
 		# Display: turn -> current turn grid -> input bombing location
 		
 		game:
+			
+  			    
 			la $a0, clear_screen
 			li $v0, 4
 			syscall	
@@ -314,6 +338,15 @@ msg:
 			la $s0, ship_count_p2
 			lw $s0, 0($s0)
 			beqz $s0, check_winner
+			
+			li   $v0, 15       	    # system call for write to file
+  			lw   $a0, log_file_desc     # file descriptor 
+  			la   $a1, turn_count_log
+	  		li   $a2, 14      	    # hardcoded buffer length
+	  		syscall
+  			lw   $a0, turn_count
+  			jal recur_write
+ 
 			p1_shoot:
 				li $v0, 4
 				la $a0, shoot
@@ -356,7 +389,20 @@ msg:
 				addi $sp, $sp, 4
 				missed_1:
 				jal print_result
+			#update log
 			
+			li   $v0, 15       	    # system call for write to file
+  			lw   $a0, log_file_desc     # file descriptor 
+  			la   $a1, p1_log
+  			lw   $a2, p_len
+  			syscall
+  			
+  			li   $v0, 15       	    # system call for write to file
+  			lw   $a0, log_file_desc
+	  		la   $a1, input_buffer
+	  		li   $a2, 3    	    # hardcoded buffer length
+	  		syscall
+
 			la $s0, ship_count_p1
 			lw $s0, 0($s0)
 			beqz $s0, check_winner
@@ -371,6 +417,7 @@ msg:
 				li $v0, 4
 				syscall
 				li $v0, 1
+				lw $s0, turn_count
                 		addi $a0, $s0, 0
                			syscall
 				li $v0, 4
@@ -403,6 +450,18 @@ msg:
 				addi $sp, $sp, 4
 				missed_2:
 				jal print_result
+				
+			li   $v0, 15       	    # system call for write to file
+  			lw   $a0, log_file_desc     # file descriptor 
+  			la   $a1, p2_log
+  			lw   $a2, p_len
+  			syscall
+  			
+  			li   $v0, 15       	    # system call for write to file
+  			lw   $a0, log_file_desc
+	  		la   $a1, input_buffer
+	  		li   $a2, 3    	    # hardcoded buffer length
+	  		syscall
 			jal update_turn_counter
 			# Delay
 			j game
@@ -415,8 +474,11 @@ msg:
 		jal announce_winner
 		
 	exit:	
-		# close file here if implemented
-		
+
+		li   $v0, 16       		# system call for close file
+  		lw   $a0, log_file_desc         # file descriptor to close
+  		syscall            		# close file
+  		
 		li $v0, 10
 		syscall
 	
@@ -453,7 +515,7 @@ msg:
 		delay:
 		addi $sp, $sp, -4
 		sw $t0, 0($sp)
-		li $t0, 10000 # delay by 10000 loop
+		li $t0, 100 # delay by 10000 loop
 		delay_while:
 			beqz $t0, exit_delay
 			addi $t0, $t0, -1
@@ -525,7 +587,7 @@ msg:
 		jal load_grid
 		la $s5, ($v1)
 		li $t7, 0
-		li $t6, 100#limiter for no infinite loop
+		li $t6, 100  #limiter for no infinite loop                                                                                                
 		parse_bomb_while:
 			beqz $t6, return_grid_bomb
 			addi $t6, $t6, -1
@@ -972,3 +1034,41 @@ msg:
 		# 	jal update_turn_counter
 		# 	addi $t7, $t7, 1
 		# 	j while_tmp
+	recur_write:
+
+  		bnez $a0, recur
+
+  	
+  		jr $ra 
+  	
+  		recur:
+  		addi $sp, $sp, -8
+
+  		sw $ra, 0($sp)
+  	
+  		li $t9, 10 
+  		div $a0, $t9
+  		div $a0, $a0, $t9
+  		mfhi $t1
+  		sw $t1, 4($sp)
+  	
+  	
+  		jal recur_write
+  	
+  	
+
+
+  		lw $ra, 0($sp)
+  		lw $t1, 4($sp)
+  		addi $sp, $sp, 8
+  	
+
+  		add $a1, $t1, 48
+  		sb   $a1, buff($zero)
+  		la $a1, buff
+  		li   $v0, 15       # system call for write to file
+  		lw   $a0, log_file_desc      # file descriptor 
+  		li   $a2, 1       # hardcoded buffer length
+  		syscall            # write to file
+  		jr $ra
+  	
