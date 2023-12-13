@@ -1,23 +1,27 @@
 .data
 	grid_player_1: .byte 0:49 
 	grid_player_2: .byte 0:49 # create 7 by 7 grid for each player
+	ship_count_p1: .word 16  # 4x1 + 3x2 + 2x3
+	ship_count_p2: .word 16   
 	dash: .asciiz "--------------------------------------------------"
 	greet: .asciiz "Hello player(s)"
 	turn_count_prompt: .asciiz "	Turn number: "
+	turn_count_log:    .ascii  "\n	Turn number: "
 	turn_count: .word 1
 	p1: .asciiz "\n	*Current player* -> Player one's turn: \n"
 	p2: .asciiz "\n	*Current player* -> Player two's turn: \n"
 	input: .asciiz "--------------------------------------------------Please setup your battleship strategy-------------------------------------------------- \n"
 	shoot: .asciiz "----------------------------------------------------------------Battle Phase------------------------------------------------------------- \n"
 	bomb_input:.asciiz "	Enter bombing coordinates: "
-	current_grid: .asciiz "						     <Your current grid> \n"
+	current_grid: .asciiz "		  				       <Your current grid> \n"
 	seven: .word 7
 	endl: .asciiz "\n" 
+	endl_no_z: .ascii "   \n" 
 	txt: .asciiz "ENDING PROGRAM\n"
 	txt_1: .asciiz "Confirm placement ? \n"
 	input_buffer: .space 100 # buffer for input
-	exception_input: .asciiz "Invalid input: "
-	setup_except: .asciiz "Valid characters for setup are number in range 0 to 6 and whitespace only \n"
+	exception_input: .asciiz "		Invalid input: "
+	setup_except: .asciiz "Valid characters for setup are single-digit number in range 0 to 6 and whitespace only \n"
 	try_again: .asciiz "Please try again: "
 	remaining: .asciiz "\n	<-> Remaining ship(s): \n"
 	s_21: .asciiz "				<+> 2 by 1 ship(s): "
@@ -30,15 +34,78 @@
 	player_2_ships: .word 3, 2, 1 # 2x1, 3x1 4x1
 	choose_placement: .asciiz "	Input placement by format x_0, y_0, x_1, y_1: "
 	input_xy_xy: .word 0:4
+	bomb_coord: .word 0:2
 	ship_misalign: .asciiz "	Ship not in horizontal or vertical alignment.\n"
 	ship_size_mismatch: .asciiz "	Coordinates does not match the input ship size. \n"
 	clear_screen: .asciiz "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
 	indent_spacing: .asciiz "							" # 8tab
 	overlap_prompt: .asciiz "	Input ship overlaps with an already placed ship.\n"
-	hit_announce: .asciiz "	HIT!!\n"
+	hit_announce: .asciiz "			HIT!!\n"
+	you_missed: .asciiz "			You missed !!\n"
+	incomplete_input: .asciiz "Incomplete input (Must be 4 numbers for ship setup or 2 numbers for bombing!!\n"
+	p1_win_bool: .word 0 # 0 if lose else win
+	player_win: .asciiz "\n__________________________WINNER: PLAYER  "
+	log_file_name: .asciiz "/mnt/Workspace/BK_assignment/CompArchitecture/gamelog.txt" # REMEMBER TO CHANGE THIS WHEN CHANGE DEVICE
+	log_file_desc: .word   0
+	log_start: .ascii "_________________________GAME LOG_________________________"
+	p1_log: .ascii    "\n		__Player one's move: "
+	p2_log: .ascii    "\n		__Player two's move: "
+	p_len:  .word 23
+	buff: .ascii ""
+	index_y: .asciiz "o-0-1-2-3-4-5-6-y\n"
+	p_w_1: .asciiz "1"
+	p_w_2: .asciiz "2"
+	player_win_log: .asciiz "\n		__Winner: Player "
+# TESTED!! EXCEPTION HANDLING
+.ktext 0x80000180
+	la $k0, syscall_integer_1
+	move $k1, $a0
+	mfc0 $a0, $14
+	beq $a0, $k0, ship_input_integer_except_1
+	la $k0, syscall_integer_2
+	beq $a0, $k0, ship_input_integer_except_2
+	move $k0,$v0   # Save $v0 value
+   	move $k1,$a0   # Save $a0 value
+   	#la   $a0, msg  # address of string to print
+   	#li   $v0, 4    # Print String service
+   	#syscall
+   	move $v0,$k0   # Restore $v0
+   	move $a0,$k1   # Restore $a0
+   	mfc0 $k0,$14   # Coprocessor 0 register $14 has address of trapping instruction
+   	addi $k0,$k0,4 # Add 4 to point to next instruction
+   	mtc0 $k0,$14   # Store new address back into $14
+   	eret           # Error return; set PC to value in $14
+   	ship_input_integer_except_1:
+   	la $k0,choose_type
+   	j return_e
+	ship_input_integer_except_2:
+   	la $k0,choose_type_2 
+   	return_e:
+	la   $a0, msg  # address of string to print
+   	li   $v0, 4    # Print String service
+   	syscall
+   	mtc0 $k0,$14   # Store new address back into $14
+   	eret           # Error return; set PC to value in $14
+.kdata	
+msg:   
+   .asciiz "	\n\n+-------!! Please input only integers (No whitespaces or other characters) !!-------+ \n\n"
 .text
 	main:
 		# start of the game
+		li $v0, 13
+		la   $a0, log_file_name     # output file name
+		li   $a1, 1        	    # Open for writing (flags are 0: read, 1: write)
+  		li   $a2, 0       	    # mode is ignored
+  		syscall            	    # open a file (file descriptor returned in $v0)
+  		sw   $v0, log_file_desc	    # store file descriptor
+  		
+  		li   $v0, 15       	    # system call for write to file
+  		lw   $a0, log_file_desc     # file descriptor 
+  		la   $a1, log_start  
+  		li   $a2, 60      	    # hardcoded buffer length
+  		syscall            	    # write to file
+  		
+  		
 		li $v0, 4
 		la $a0, clear_screen
 		syscall 
@@ -51,7 +118,7 @@
 		syscall
 		la $a0, endl
 		syscall
-		j main_game_phase# DEBUGGING ONLY 
+		# j main_game_phase# DEBUGGING ONLY 
 		## Input
 		la $a0, input
 		syscall
@@ -127,6 +194,7 @@
 			li $v0, 5
 			li $a1, 1
 			la $a2, choose_type
+		syscall_integer_1:
 			syscall
 			jal is_type_valid
 			
@@ -231,6 +299,7 @@
 			li $v0, 5
 			li $a1, 2
 			la $a2, choose_type_2 # address for exception calls
+			syscall_integer_2:
 			syscall
 			jal is_type_valid
 			
@@ -259,13 +328,29 @@
 		
 	main_game_phase:
 		# Display: turn -> current turn grid -> input bombing location
-		la $a0, clear_screen
-		li $v0, 4
-		syscall	
+		
 		game:
-			la $s0, turn_count
+			
+  			    
+			la $a0, clear_screen
+			li $v0, 4
+			syscall	
+			# If p1 ship == 0 or p2 ship == 0 ends 
+			la $s0, ship_count_p1
 			lw $s0, 0($s0)
-			beq $s0, 10, exit
+			beqz $s0, check_winner
+			la $s0, ship_count_p2
+			lw $s0, 0($s0)
+			beqz $s0, check_winner
+			
+			li   $v0, 15       	    # system call for write to file
+  			lw   $a0, log_file_desc     # file descriptor 
+  			la   $a1, turn_count_log
+	  		li   $a2, 14      	    # hardcoded buffer length
+	  		syscall
+  			lw   $a0, turn_count
+  			jal recur_write
+ 
 			p1_shoot:
 				li $v0, 4
 				la $a0, shoot
@@ -274,25 +359,65 @@
 				li $v0, 4
 				syscall
 				li $v0, 1
-                addi $a0, $s0, 0
-                syscall
+				la $s0, turn_count
+				lw $s0, 0($s0)
+                		addi $a0, $s0, 0
+                		syscall
 				li $v0, 4
 				la $a0, p1
 				syscall 
 				la $a0, current_grid
-				li $v0, 4
+				li $v0,4
 				syscall
 				la $a0, grid_player_1
 				jal print_grid
+				shoot_p1:
 				la $a0, bomb_input
 				li $v0, 4
 				syscall
-
 				la $a0, input_buffer
 				li $a1, 100
 				li $v0, 8
 				syscall 
-				# jal parse_bomb_input 
+				
+				la $a2, 2 # player 2 being hit
+				la $a3, shoot_p1 # incase invalid
+				jal parse_bomb_input
+				beqz $v0, missed_1 # if v0 -> reduce remaining ship
+				addi $sp, $sp, -4
+				sw   $t0, 0($sp)
+				lw   $t0, ship_count_p2
+				addi $t0, $t0, -1
+				sw   $t0, ship_count_p2
+				lw   $t0, 0($sp)
+				addi $sp, $sp, 4
+				missed_1:
+				jal print_result
+			#update log
+			
+			li   $v0, 15       	    # system call for write to file
+			
+  			lw   $a0, log_file_desc     # file descriptor 
+  			la   $a1, p1_log
+  			lw   $a2, p_len
+  			syscall
+  			
+  			li   $v0, 15       	    # system call for write to file
+  			lw   $a0, log_file_desc
+	  		la   $a1, input_buffer
+	  		li   $a2, 3	    # hardcoded buffer length
+	  		syscall
+			
+			
+			la $s0, ship_count_p1
+			lw $s0, 0($s0)
+			beqz $s0, check_winner
+			la $s0, ship_count_p2
+			lw $s0, 0($s0)
+			beqz $s0, check_winner
+			la $a0, clear_screen
+			li $v0, 4
+			syscall	
 			p2_shoot:
 				li $v0, 4
 				la $a0, shoot
@@ -301,8 +426,9 @@
 				li $v0, 4
 				syscall
 				li $v0, 1
-                addi $a0, $s0, 0
-                syscall
+				lw $s0, turn_count
+                		addi $a0, $s0, 0
+               			syscall
 				li $v0, 4
 				la $a0, p2
 				syscall 
@@ -311,27 +437,116 @@
 				syscall
 				la $a0, grid_player_2
 				jal print_grid
+				shoot_p2:
+				la $a0, bomb_input
+				li $v0, 4
+				syscall
+				la $a0, input_buffer
+				li $a1, 100
+				li $v0, 8
+				syscall 
+				
+				la $a2, 1 # player 1 being hit
+				la $a3, shoot_p2
+				jal parse_bomb_input
+				beqz $v0, missed_2 # if v0 -> reduce remaining ship
+				addi $sp, $sp, -4
+				sw   $t0, 0($sp)
+				lw   $t0, ship_count_p1
+				addi $t0, $t0, -1
+				sw   $t0, ship_count_p1
+				lw   $t0, 0($sp)
+				addi $sp, $sp, 4
+				missed_2:
+				jal print_result
+				
+			li   $v0, 15       	    # system call for write to file
+  			lw   $a0, log_file_desc     # file descriptor 
+  			la   $a1, p2_log
+  			lw   $a2, p_len
+  			syscall
+  			
+  			li   $v0, 15       	    # system call for write to file
+  			lw   $a0, log_file_desc
+	  		la   $a1, input_buffer
+	  		li   $a2, 3	    # hardcoded buffer length
+	  		syscall
 			jal update_turn_counter
 			# Delay
-			addi $sp, $sp, -4
-			sw $t0, 0($sp)
-			li $t0, 10000000
-			delay_while:
-				beqz $t0, exit_delay
-				addi $t0, $t0, -1
-                j delay_while
-			exit_delay:
-				lw $t0, 0($sp)
-				addi $sp, $sp, 4
-
 			j game
-	exit:
-		la $a0, txt
-		li $v0, 4
-		syscall
+	check_winner:
+		lw  $s1, p1_win_bool
+		lw  $s0, ship_count_p2
+		seq $s1, $s0, $zero
+		sw  $s1, p1_win_bool
+		
+		jal announce_winner
+		
+	exit:	
+
+		li   $v0, 16       		# system call for close file
+  		lw   $a0, log_file_desc         # file descriptor to close
+  		syscall            		# close file
+  		
 		li $v0, 10
 		syscall
+	
+	announce_winner:
+		lw  $s0, p1_win_bool
+		la $a0, player_win
+		li $v0, 4
+		syscall
+		li   $v0, 15       	    # system call for write to file
+  		lw   $a0, log_file_desc
+	  	la   $a1, player_win
+	  	li   $a2, 42
+	  	syscall
+	  	
+		beqz $s0, p2_win
+		
+		la $a0, p_w_1
+		j announce
+		
+		p2_win:
+		la $a0, p_w_2
+		announce:
+		li $v0, 4
+		syscall
+		
+		li   $v0, 15       	    # system call for write to file
+  		la   $a1, ($a0)
+  		lw   $a0, log_file_desc
+	  	li   $a2, 1
+	  	syscall
+		jr $ra
 			
+	print_result:
+		addi $sp, $sp, -4
+		sw $a0, 0($sp)
+		addi $a0, $v0, 0
+		li $v0, 4
+		beqz $a0, no_hit
+		la $a0, hit_announce
+		syscall
+		j delay
+		no_hit:
+			la $a0, you_missed
+			syscall
+		delay:
+		addi $sp, $sp, -4
+		sw $t0, 0($sp)
+		li $t0, 10000 # delay by 10000 loop
+		delay_while:
+			beqz $t0, exit_delay
+			addi $t0, $t0, -1
+                	j delay_while
+		exit_delay:
+			lw $t0, 0($sp)
+			addi $sp, $sp, 4
+		lw $a0, 0($sp)
+		addi $sp, $sp, 4
+		jr $ra
+		
 	is_type_valid:
         	addi $sp, $sp, -4
 		sw $s0, 0($sp)
@@ -377,7 +592,108 @@
 			la $v1, player_1_ships
             jr $ra
 		
+	parse_bomb_input:
+		# input: a0 -> input_buffer; a1 -> size; a2 -> player being hit
+		#	  a3 -> address to jump to in case of exception
+		# output: v0: bool -> hit or not
+		addi $sp, $sp, -12
 		
+		sw $s0, 0($sp)
+		sw $ra, 4($sp)
+		sw $t7, 8($sp)
+		addi $s6, $a1, 0
+		# while
+		la $s0, input_buffer
+		jal load_grid
+		la $s5, ($v1)
+		li $t7, 0
+		li $t6, 100  #limiter for no infinite loop        
+		li $t9, 1                                                                                       
+		parse_bomb_while:
+			beqz $t6, return_grid_bomb
+			addi $t6, $t6, -1
+			beq $t7, 2, update_grid
+
+			lb   $t0, 0($s0)
+			beq  $t0, 10, return_grid_bomb
+			addi $t0, $t0, -48
+			addi $s0, $s0, 1
+			
+			slt $t1, $t0, $zero
+			sne $t2, $t0, -16
+			and $t1, $t1, $t2
+			
+			sgt $t2, $t0,  6
+			# check if input is in range [0,6]
+			or  $t1, $t1, $t2
+			bnez $t1,    throw_invalid_setup
+			# check if not next_to_space and is number -> not a single digit number -> throw error
+			sne $t1, $t0, -16 # set if t0 is not space
+			beqz $t1, set_1
+			and $t1, $t1, $t9
+			beqz $t1,    throw_invalid_setup
+			# if not space run update coordinates
+			set_1:
+			bne $t0, -16, unset_1
+			li $t9, 1
+			j no_set_1
+			unset_1:
+			li $t9, 0
+			no_set_1:
+			
+			bne $t0, -16,  update_bomb_coordinates
+
+	        	j parse_bomb_while
+		update_bomb_coordinates:
+				addi $sp, $sp, -8
+				sw $s0, 0($sp)
+				sw $t7, 4($sp)
+				la $s0, bomb_coord
+                		sll $t7, $t7, 2
+				add $s0, $s0, $t7
+				sw $t0, 0($s0)
+				
+				# restore stack
+				lw $s0, 0($sp)
+				lw $t7, 4($sp)
+				addi $sp, $sp, 8
+
+				#increment number of inputed coordinate
+				addi $t7, $t7, 1
+                		j parse_bomb_while
+		update_grid:
+			addi $sp, $sp, -16
+			sw $t0, 0($sp)
+			sw $t1, 4($sp)
+			sw $t2, 8($sp)
+			sw $s0, 12($sp)
+			
+			la $s0, bomb_coord
+			lw $t0, 0($s0) # x
+			lw $t1, 4($s0) # y
+			
+			mul $t0, $t0, 7   # row * 7
+			add $t0, $t0, $t1 # add col to row
+			add $s0, $a2, $t0 # get grid[x][y]
+			
+			lb $t2, 0($s0)
+			sb $zero, 0($s0)
+			sne $v0, $zero, $t2 # set if t2 is not zero (is a ship)
+			lw $t0, 0($sp)
+			lw $t1, 4($sp)
+			lw $t2, 8($sp)
+			lw $s0, 12($sp)
+			addi $sp, $sp, 16
+		return_grid_bomb:
+			blt $t7, 2, throw_incomplete_input
+			lw $s0, 0($sp)
+			lw $ra, 4($sp)
+			lw $t7, 8($sp)
+			addi $sp, $sp, 12
+			jr $ra		
+		
+
+	
 	parse_input:
 		# input: a0 -> input_buffer; a1 -> size; a2 -> player id
 		#	  a3 -> address to jump to in case of exception
@@ -393,6 +709,7 @@
 		la $s5, ($v1)
 		li $t7, 0
 		li $t6, 100#limiter for no infinite loop
+		li $t9, 1  #bool next_to_space
 		parse_while:
 			beqz $t6, return_grid
 			addi $t6, $t6, -1
@@ -403,29 +720,47 @@
 			addi $t0, $t0, -48
 			addi $s0, $s0, 1
 			
-			slt $t1, $t0, $zero
-			sne $t2, $t0, -16
+
+			
+			slt $t1, $t0, $zero # t0 < 0
+			sne $t2, $t0, -16   # t0 != -16 (space)
 			and $t1, $t1, $t2
+
 			
 			sgt $t2, $t0,  6
 			# check if input is in range [0,6]
 			or  $t1, $t1, $t2
-			bnez $t1,    throw_invalid_setup
 			
+
+
+			bnez $t1,    throw_invalid_setup
+			# check if not next_to_space and is number -> not a single digit number -> throw error
+			sne $t1, $t0, -16 # set if t0 is not space
+			beqz $t1, set
+			and $t1, $t1, $t9
+			beqz $t1,    throw_invalid_setup
 			# if not space run update coordinates
+			set:
+			bne $t0, -16, unset
+			li $t9, 1
+			j no_set
+			unset:
+			li $t9, 0
+			no_set:
+			
 			bne $t0, -16,  update_coordinates
-	        
+	        	
 	        #li $v0, 11
 			#li $a0, 32
 			#syscall
-	        j parse_while
+		        j parse_while
 
 			update_coordinates:
 				addi $sp, $sp, -8
 				sw $s0, 0($sp)
 				sw $t7, 4($sp)
 				la $s0, input_xy_xy
-                sll $t7, $t7, 2
+                		sll $t7, $t7, 2
 				add $s0, $s0, $t7
 				sw $t0, 0($s0)
 				
@@ -436,7 +771,7 @@
 
 				#increment number of inputed coordinate
 				addi $t7, $t7, 1
-                j parse_while
+                		j parse_while
 
 			check_if_less_than_then_swap:
 				# input $t0 first registers
@@ -610,11 +945,23 @@
 				beq  $v0, 1, size_mismatch
 				beq  $v0, 2, throw_overlap_placement
 		return_grid:
+		
+			blt $t7, 4, throw_incomplete_input
 			lw $s0, 0($sp)
 			lw $ra, 4($sp)
 			lw $t7, 8($sp)
 			addi $sp, $sp, 12
 			jr $ra		
+		
+		throw_incomplete_input:
+		
+			lw $s0, 0($sp)
+			lw $ra, 4($sp)
+			lw $t7, 8($sp)
+			addi $sp, $sp, 12
+			la $a0, incomplete_input
+			la $a1, ($a3)
+			j throw_invalid_input		
 		throw_invalid_setup:
 			# li $v0, 1
 			# add $a0, $t0, $zero
@@ -632,6 +979,7 @@
 			lw $s0, 0($sp)
 			lw $ra, 4($sp)
 			lw $t7, 8($sp)
+			addi $sp, $sp, 12
 			la $a0, ship_misalign
 			la $a1, ($a3)
 			j throw_invalid_input
@@ -656,7 +1004,7 @@
 		addi $sp, $sp, -4
 		sw $s0, 0($sp)
 		la $s0, ($a0)
-		li $t1, 0 # cur r
+		li $t1, -1 # cur r
 		la $s1, seven
 		lw $s1, 0($s1)
 		for_print:
@@ -664,8 +1012,18 @@
 			la $a0, indent_spacing
 			syscall
 			
-			li $t2, 0 # cur c
+			li $t2, -1 # cur c
+			beq $t1, 7, print_y_index
+			bgez $t1, for_print_2
+			print_y_index:
+				la $a0, index_y
+				li $v0, 4
+				syscall
+				j end_for_print_2	  
 			for_print_2:
+				print_num:
+				bltz $t2, print_index
+				beq  $t2, 7, print_index 
 				la $t0, ($s0)
 				mul $t3, $t1, $s1
 				add $t3, $t3, $t2
@@ -675,7 +1033,12 @@
 				add $a0, $t4, $zero
 				li $v0, 1
 				syscall
-		
+				j print_space
+				print_index:
+				add $a0, $t1, $zero
+				li $v0, 1
+				syscall
+				print_space:
 				li $v0, 11
 				li $a0, 32   # ASCII code for space
     				syscall
@@ -684,14 +1047,14 @@
 				#li $v0, 1
 				#add $a0, $t2, $zero
     				#syscall
-				blt $t2, 7, for_print_2
+				blt $t2, 8, for_print_2
 			
 				la $a0, endl
 				li $v0, 4
     				syscall
-    			
+    			end_for_print_2:
     				addi $t1, $t1, 1
-				blt $t1, 7, for_print
+				blt $t1, 8, for_print
 		end_print:
 			lw $s0, 0($sp)
 			addi $sp, $sp, 4
@@ -738,3 +1101,41 @@
 		# 	jal update_turn_counter
 		# 	addi $t7, $t7, 1
 		# 	j while_tmp
+	recur_write:
+
+  		bnez $a0, recur
+
+  	
+  		jr $ra 
+  	
+  		recur:
+  		addi $sp, $sp, -8
+
+  		sw $ra, 0($sp)
+  	
+  		li $t9, 10 
+  		div $a0, $t9
+  		div $a0, $a0, $t9
+  		mfhi $t1
+  		sw $t1, 4($sp)
+  	
+  	
+  		jal recur_write
+  	
+  	
+
+
+  		lw $ra, 0($sp)
+  		lw $t1, 4($sp)
+  		addi $sp, $sp, 8
+  	
+
+  		add $a1, $t1, 48
+  		sb   $a1, buff($zero)
+  		la $a1, buff
+  		li   $v0, 15       # system call for write to file
+  		lw   $a0, log_file_desc      # file descriptor 
+  		li   $a2, 1       # hardcoded buffer length
+  		syscall            # write to file
+  		jr $ra
+  	
