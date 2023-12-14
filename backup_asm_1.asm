@@ -51,11 +51,12 @@
 	p1_log: .ascii    "\n		__Player one's move: "
 	p2_log: .ascii    "\n		__Player two's move: "
 	p_len:  .word 23
-	buff: .ascii ""
+	buff: .asciiz ""
 	index_y: .asciiz "o-0-1-2-3-4-5-6-y\n"
 	p_w_1: .asciiz "1"
 	p_w_2: .asciiz "2"
 	player_win_log: .asciiz "\n		__Winner: Player "
+	
 # TESTED!! EXCEPTION HANDLING
 .ktext 0x80000180
 	la $k0, syscall_integer_1
@@ -124,7 +125,9 @@ msg:
 		syscall
 	
 	li $t7, 6
+	j end_p1_setup
 	j start_up
+	
 	p1_setup:
 		li $v0, 4
 		la $a0, clear_screen
@@ -225,7 +228,8 @@ msg:
 			addi $t7, $t7, -1
 			j p1_setup
 	end_p1_setup:	
-		
+		la $a0, grid_player_1
+		jal log_grid
 	
 	li $t7, 6
 	p2_setup:
@@ -1138,4 +1142,85 @@ msg:
   		li   $a2, 1       # hardcoded buffer length
   		syscall            # write to file
   		jr $ra
-  	
+  		
+  	log_grid:
+  		addi $sp, $sp, -4
+		sw $s0, 0($sp)
+		la $s0, ($a0)
+		li $t1, -1 # cur r
+		la $s1, seven
+		lw $s1, 0($s1)
+		for_log:
+
+			la $a0, log_file_desc
+			la $a1, indent_spacing
+			la $a2, 7
+			li $v0, 15
+			syscall
+			
+			li $t2, -1 # cur c
+			beq $t1, 7, log_y_index
+			bgez $t1, for_log_2
+			log_y_index:
+				la $a0, log_file_desc
+				la $a1, index_y
+				la $a2, 19
+				li $v0, 15
+				syscall
+				j end_for_log_2	  
+			for_log_2:
+				log_num:
+				bltz $t2, log_index
+				beq  $t2, 7, log_index 
+				la $t0, ($s0)
+				mul $t3, $t1, $s1
+				add $t3, $t3, $t2
+			
+				add $t0, $t0, $t3
+				lb $t4, 0($t0) 
+				add $a1, $t4, 48
+				sb $a1, buff($zero)
+				la $a0, log_file_desc
+				la $a1, buff
+				la $a2, 1
+				li $v0, 15
+				syscall
+				
+				j log_space
+				log_index:
+				add $a1, $t1, 48
+				sb $a1, buff($zero)
+				la $a0, log_file_desc
+				la $a1, buff
+				la $a2, 1
+				li $v0, 15
+				syscall
+				log_space:
+
+				li $a1, 32   # ASCII code for space
+			
+				sb $a1, buff($zero)
+				la $a0, log_file_desc
+				la $a1, buff
+				la $a2, 1
+				li $v0, 15
+    				syscall
+			
+				addi $t2, $t2, 1
+				#li $v0, 1
+				#add $a0, $t2, $zero
+    				#syscall
+				blt $t2, 8, for_log_2
+				
+				la $a0, log_file_desc
+				la $a1, endl
+				la $a2, 1
+				li $v0, 15
+
+    			end_for_log_2:
+    				addi $t1, $t1, 1
+				blt $t1, 8, for_log
+		end_log:
+			lw $s0, 0($sp)
+			addi $sp, $sp, 4
+			jr $ra
